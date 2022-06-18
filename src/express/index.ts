@@ -13,4 +13,4 @@ export default app;
 import prouter from './auth';
 import './routes';
 
-app.use('/protected', prouter);
+app.use('/', prouter);

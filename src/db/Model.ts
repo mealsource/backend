@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-enum OrderStatus {
+export enum OrderStatus {
 	PENDING = 'pending',
 	CONFIRMED = 'confirmed',
 	CANCELLED = 'cancelled',
@@ -9,7 +9,7 @@ enum OrderStatus {
 	REJECTED = 'rejected',
 }
 
-enum PaymentStatus {
+export enum PaymentStatus {
 	PENDING = 'pending',
 	CONFIRMED_BY_CUSTOMER = 'confirmed_by_customer',
 	CONFIRMED_BY_MERCHANT = 'confirmed_by_merchant',
@@ -21,6 +21,7 @@ export interface IUser {
 	email: string;
 	rollno: string;
 	rating: number;
+	admin: boolean;
 }
 
 const UserSchema = new mongoose.Schema<IUser>({
@@ -28,11 +29,12 @@ const UserSchema = new mongoose.Schema<IUser>({
 	email: { type: String, required: true },
 	rollno: { type: String, required: true, unique: true },
 	rating: { type: Number },
+	admin: { type: Boolean, default: false },
 });
 
 export interface IUUIDCookie {
 	uuid: string;
-	user: mongoose.Schema.Types.ObjectId;
+	user: mongoose.Types.ObjectId;
 }
 
 const UUIDCookieSchema = new mongoose.Schema<IUUIDCookie>({
@@ -45,11 +47,12 @@ export const UUIDMapping = mongoose.model('UUIDMapping', UUIDCookieSchema);
 export const User = mongoose.model<IUser>('User', UserSchema);
 
 export interface IInventoryItem {
+	_id: any;
 	name: string;
 	quantity: number;
 	price: number;
 	description: string;
-	store: mongoose.Schema.Types.ObjectId;
+	store: mongoose.Types.ObjectId;
 }
 
 export interface IStore {
@@ -57,7 +60,7 @@ export interface IStore {
 	latitude: number;
 	longitude: number;
 	radius: number;
-	inventory: mongoose.Schema.Types.ObjectId[];
+	inventory: mongoose.Types.ObjectId[];
 }
 
 const InventoryItemSchema = new mongoose.Schema<IInventoryItem>({
@@ -98,7 +101,7 @@ const OrderSchema = new mongoose.Schema<IOrder>({
 		required: true,
 		ref: 'User',
 	},
-	orderdAt: { type: Date, required: true },
+	orderdAt: { type: Date, required: true, default: () => new Date() },
 	items: [
 		{
 			type: mongoose.Schema.Types.ObjectId,
@@ -108,14 +111,23 @@ const OrderSchema = new mongoose.Schema<IOrder>({
 	],
 	deliveredBy: {
 		type: mongoose.Schema.Types.ObjectId,
-		required: true,
 		ref: 'User',
 	},
-	deliveredAt: { type: Date, required: true },
-	status: { type: String, enum: Object.values(OrderStatus), required: true },
+	deliveredAt: { type: Date },
+	status: {
+		type: String,
+		enum: Object.values(OrderStatus),
+		required: true,
+		default: OrderStatus.PENDING,
+	},
 	store: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'Store' },
 	total: { type: Number, required: true },
-	paid: { type: String, enum: Object.values(PaymentStatus), required: true },
+	paid: {
+		type: String,
+		enum: Object.values(PaymentStatus),
+		required: true,
+		default: PaymentStatus.PENDING,
+	},
 });
 
 export const Order = mongoose.model<IOrder>('Order', OrderSchema);

@@ -4,7 +4,7 @@ import { Request, Response, Router } from 'express';
 import { expressjwt } from 'express-jwt';
 import * as db from '../db';
 import jwt from 'jsonwebtoken';
-
+import { default as guard_init } from 'express-jwt-permissions';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const CAS = require('cas');
 import logger from '../logger';
@@ -16,6 +16,9 @@ prouter.use(
 		algorithms: ['HS256'],
 	}),
 );
+
+export const guard = guard_init({ requestProperty: 'auth' });
+prouter.use(guard.check('read'));
 
 const cas = new CAS({
 	base_url: process.env['CAS_URL'],
@@ -100,9 +103,14 @@ app.get('/token', async (req: Request, res: Response) => {
 		return;
 	}
 	const user = uuid_mapping.user;
+	const permissions = ['read'];
+	if (user.admin) {
+		permissions.push('admin');
+	}
 	const token = jwt.sign(
 		{
 			rollno: user.rollno,
+			permissions: permissions,
 		},
 		process.env.JWT_SECRET || 'CHANGEYOURSECRET',
 		{
@@ -111,12 +119,16 @@ app.get('/token', async (req: Request, res: Response) => {
 	);
 	res.json({
 		token: token,
-		name: user.name,
-		rollno: user.rollno,
-		email: user.email,
+		user: {
+			name: user.name,
+			rollno: user.rollno,
+			email: user.email,
+		},
 	});
 	await uuid_mapping.delete();
 });
 
 export { Request } from 'express-jwt';
+import { adminrouter } from './routes/admin';
+prouter.use('/admin', adminrouter);
 export default prouter;
