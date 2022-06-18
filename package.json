@@ -1,0 +1,19 @@
+{
+  "name": "mealsource-backend",
+  "version": "0.0.1",
+  "description": "Backend for MealSource app",
+  "main": "src/index.ts",
+  "repository": "https://github.com/mealsource/backend",
+  "author": "noteness",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.28.0",
+    "@typescript-eslint/parser": "^5.28.0",
+    "eslint": "^8.18.0",
+    "eslint-config-prettier": "^8.5.0",
+    "prettier": "^2.7.1",
+    "ts-node": "^10.8.1",
+    "typescript": "^4.7.4"
+  }
+}
