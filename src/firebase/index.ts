@@ -1,5 +1,5 @@
 import * as firebase from 'firebase-admin';
-import * as serviceAccount from '../secrets/firebase.json';
+import * as serviceAccount from './secrets/firebase.secret.json';
 import * as db from '../db';
 import logger from '../logger';
 
