@@ -92,6 +92,7 @@ export interface IOrder {
 	status: OrderStatus;
 	store: mongoose.Types.ObjectId;
 	total: number;
+	quantities: number[];
 	paid: PaymentStatus;
 }
 
@@ -109,6 +110,7 @@ const OrderSchema = new mongoose.Schema<IOrder>({
 			ref: 'InventoryItem',
 		},
 	],
+	quantities: [{ type: Number, required: true }],
 	deliveredBy: {
 		type: mongoose.Schema.Types.ObjectId,
 		ref: 'User',

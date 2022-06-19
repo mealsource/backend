@@ -1,7 +1,10 @@
+// eslint-disable @typescript-eslint/no-non-null-assertion
 import prouter, { Request } from '../auth';
 import { Response } from 'express';
 import * as db from '../../db';
 import app from '..';
+import { sendOrder } from '../../firebase';
+import * as Errors from '../errors';
 
 export { app as app };
 export { Request as Request };
@@ -36,33 +39,41 @@ prouter.post('/order', async (req: Request, res: Response) => {
 	const store = await db.Store.findById(Items[0].store);
 	let price = 0;
 	const dbItems = [];
+	const quantities: number[] = [];
 	for (const item of Items) {
 		if (item.store != store?._id) {
 			res.status(400).json({
+				errorcode: Errors.ErrorCode.MULTIPLE_STORES,
 				error: 'Items from multiple stores. Select only one store.',
 			});
 			return;
 		}
-		const dbItem = await db.InventoryItem.findById(item._id);
+		const dbItem = await db.InventoryItem.findOneAndUpdate(
+			{ _id: item._id, quantity: { $gte: item.quantity } },
+			{
+				$inc: { quantity: -item.quantity },
+			},
+		);
 		dbItems.push(dbItem);
-		if (!dbItem?.quantity || dbItem?.quantity <= 0) {
+		quantities.push(item.quantity);
+		if (!dbItem?.quantity) {
 			res.status(400).json({
-				errorCode: 2,
+				errorcode: Errors.ErrorCode.OUT_OF_STOCK,
 				error: `${item.name} is out of stock.`,
 			});
 			return;
 		}
-		dbItem.quantity--;
-		dbItem.save();
-		price += dbItem.price;
+		price += dbItem.price * item.quantity;
 	}
 	const order = new db.Order({
 		orderdBy: user,
 		items: dbItems,
-		price: price,
+		total: price,
+		quantities: quantities,
 		store: store?._id,
 	});
 	await order.save();
+	void sendOrder(order.toObject());
 	res.json({
 		success: true,
 		orderId: order._id,
