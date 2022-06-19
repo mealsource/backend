@@ -7,6 +7,8 @@ export enum OrderStatus {
 	DELIVERED = 'delivered',
 	ACCEPTED = 'accepted',
 	REJECTED = 'rejected',
+	PAID = 'paid',
+	DONE = 'done',
 }
 
 export enum PaymentStatus {
@@ -22,6 +24,8 @@ export interface IUser {
 	rollno: string;
 	rating: number;
 	admin: boolean;
+	currentOrder?: mongoose.Types.ObjectId;
+	currentDelivery?: mongoose.Types.ObjectId;
 }
 
 const UserSchema = new mongoose.Schema<IUser>({
@@ -30,6 +34,8 @@ const UserSchema = new mongoose.Schema<IUser>({
 	rollno: { type: String, required: true, unique: true },
 	rating: { type: Number },
 	admin: { type: Boolean, default: false },
+	currentOrder: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
+	currentDelivery: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
 });
 
 export interface IUUIDCookie {
@@ -47,7 +53,7 @@ export const UUIDMapping = mongoose.model('UUIDMapping', UUIDCookieSchema);
 export const User = mongoose.model<IUser>('User', UserSchema);
 
 export interface IInventoryItem {
-	_id: any;
+	_id: mongoose.Types.ObjectId;
 	name: string;
 	quantity: number;
 	price: number;
@@ -84,7 +90,7 @@ const StoreSchema = new mongoose.Schema<IStore>({
 export const Store = mongoose.model<IStore>('Store', StoreSchema);
 
 export interface IOrder {
-	orderdBy: mongoose.Types.ObjectId;
+	orderedBy: mongoose.Types.ObjectId;
 	orderdAt: Date;
 	items: mongoose.Types.ObjectId[];
 	deliveredBy?: mongoose.Types.ObjectId;
@@ -94,13 +100,15 @@ export interface IOrder {
 	total: number;
 	quantities: number[];
 	paid: PaymentStatus;
+	destination: string;
 }
 
 const OrderSchema = new mongoose.Schema<IOrder>({
-	orderdBy: {
+	orderedBy: {
 		type: mongoose.Schema.Types.ObjectId,
 		required: true,
 		ref: 'User',
+		unique: true,
 	},
 	orderdAt: { type: Date, required: true, default: () => new Date() },
 	items: [
@@ -130,6 +138,7 @@ const OrderSchema = new mongoose.Schema<IOrder>({
 		required: true,
 		default: PaymentStatus.PENDING,
 	},
+	destination: { type: String, required: true },
 });
 
 export const Order = mongoose.model<IOrder>('Order', OrderSchema);

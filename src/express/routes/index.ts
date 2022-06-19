@@ -5,13 +5,12 @@ import * as db from '../../db';
 import app from '..';
 import { sendOrder } from '../../firebase';
 import * as Errors from '../errors';
-
 export { app as app };
 export { Request as Request };
 
 prouter.get('/stores', async (req: Request, res: Response) => {
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	const stores = (await db.Store.find().lean()).map(({ inventory, ...store }) => store);
+	const stores = await db.Store.find().populate('inventory');
 	res.json(stores);
 });
 
@@ -28,7 +27,8 @@ prouter.get('/store/:storeId/inventory', async (req: Request, res: Response) => 
 prouter.get('/orders', async (req: Request, res: Response) => {
 	const orders = await db.Order.find({ status: db.OrderStatus.PENDING })
 		.populate('items')
-		.populate('orderdBy');
+		.populate('orderedBy')
+		.populate('store');
 	res.json(orders);
 });
 
@@ -50,9 +50,18 @@ prouter.post('/order/:orderId/accept', async (req: Request, res: Response) => {
 			errorcode: Errors.ErrorCode.INVALID_ORDER,
 		});
 	}
+	if (user?.currentDelivery) {
+		res.status(400).json({
+			error: 'You are already delivering',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
 	order.deliveredBy = user!._id;
 	order.status = db.OrderStatus.ACCEPTED;
 	await order.save();
+	user!.currentDelivery = order._id;
+	await user?.save();
 	sendOrder(order.toObject());
 	res.json(order);
 });
@@ -61,19 +70,20 @@ prouter.post('/order/:orderId/confirm', async (req: Request, res: Response) => {
 	const orderId = req.params['orderId'];
 	const rollno = req.auth?.rollno;
 	const user = await db.User.findOne({ rollno });
-	const order = await db.Order.findById(orderId).populate<{ orderdBy: db.IUser }>('orderdBy');
-	if (user != order!.orderdBy) {
+	const order = await db.Order.findById(orderId).populate<{ orderedBy: db.IUser }>('orderedBy');
+	if (user!.rollno != order!.orderedBy.rollno) {
 		res.status(400).json({
 			error: 'You are not the owner of this order',
 			errorcode: Errors.ErrorCode.INVALID_ORDER,
 		});
 		return;
 	}
-	if (order!.status !== db.OrderStatus.ACCEPTED) {
+	if (order!.status != db.OrderStatus.ACCEPTED) {
 		res.status(400).json({
 			error: 'Order is not accepted',
 			errorcode: Errors.ErrorCode.INVALID_ORDER,
 		});
+		return;
 	}
 	order!.status = db.OrderStatus.CONFIRMED;
 	await order!.save();
@@ -84,8 +94,10 @@ prouter.post('/order/:orderId/reject', async (req: Request, res: Response) => {
 	const orderId = req.params['orderId'];
 	const rollno = req.auth?.rollno;
 	const user = await db.User.findOne({ rollno });
-	const order = await db.Order.findById(orderId).populate<{ orderdBy: db.IUser }>('orderdBy');
-	if (user != order!.orderdBy) {
+	const order = await db.Order.findById(orderId)
+		.populate<{ orderedBy: db.IUser }>('orderedBy')
+		.populate('deliveredBy');
+	if (user!.rollno != order!.orderedBy.rollno) {
 		res.status(400).json({
 			error: 'You are not the owner of this order',
 			errorcode: Errors.ErrorCode.INVALID_ORDER,
@@ -99,15 +111,71 @@ prouter.post('/order/:orderId/reject', async (req: Request, res: Response) => {
 		});
 	}
 	order!.status = db.OrderStatus.PENDING;
+	await db.User.findByIdAndUpdate(order!.deliveredBy, { $set: { currentDelivery: null } });
 	order!.deliveredBy = undefined;
 	sendOrder(order!.toObject());
 	await order!.save();
+	res.json(order);
+});
+
+prouter.post('/order/:orderId/cancel', async (req: Request, res: Response) => {
+	const orderId = req.params['orderId'];
+	const rollno = req.auth?.rollno;
+	const user = await db.User.findOne({ rollno });
+	const order = await db.Order.findById(orderId).populate<{ orderedBy: db.IUser }>('orderedBy');
+	if (user != order!.orderedBy) {
+		res.status(400).json({
+			error: 'You are not the owner of this order',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	if (order!.status != db.OrderStatus.PENDING && order!.status != db.OrderStatus.ACCEPTED) {
+		res.status(400).json({
+			error: 'Order is not pending',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	order!.status = db.OrderStatus.CANCELLED;
+	await order!.save();
+	res.json(order);
+});
+
+prouter.get('/currentorder', async (req: Request, res: Response) => {
+	const rollno = req.auth?.rollno;
+	const user = await db.User.findOne({ rollno: rollno })
+		.populate<{ currentOrder: db.IOrder }>('currentOrder')
+		.populate<{ currentDelivery: db.IOrder }>('currentDelivery');
+	if (user!.currentOrder) {
+		res.json({ type: 'order', order: user!.currentOrder });
+	} else if (user!.currentDelivery) {
+		res.json({ type: 'delivery', order: user!.currentDelivery });
+	} else {
+		res.json({ type: 'none' });
+	}
 });
 
 prouter.post('/order', async (req: Request, res: Response) => {
 	const Items: db.IInventoryItem[] = req.body['items'];
 	const rollno = req.auth?.rollno;
-	const user = await db.User.findOne({ rollno: rollno });
+	const user = await db.User.findOne({ rollno: rollno })
+		.populate<{ currentOrder: db.IOrder }>('currentOrder')
+		.populate<{ currentDelivery: db.IOrder }>('currentDelivery');
+	if (user!.currentDelivery) {
+		res.status(400).json({
+			error: 'You have a delivery in progress',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	if (user!.currentOrder) {
+		res.status(400).json({
+			error: 'You have an order in progress',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
 	const store = await db.Store.findById(Items[0].store);
 	let price = 0;
 	const dbItems = [];
@@ -139,18 +207,109 @@ prouter.post('/order', async (req: Request, res: Response) => {
 	}
 
 	const order = new db.Order({
-		orderdBy: user!._id,
+		orderedBy: user!._id,
 		items: dbItems,
 		total: price,
 		quantities: quantities,
 		store: store?._id,
+		destination: req.body['destination'],
 	});
 	await order.save();
-	void sendOrder(order.toObject());
+	// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+	// @ts-ignore
+	user!.currentOrder = order._id;
+	await user!.save();
+	sendOrder(order.toObject());
 	res.json({
 		success: true,
 		orderId: order._id,
 	});
+});
+
+prouter.post('/order/:orderId/deliver', async (req: Request, res: Response) => {
+	const orderId = req.params['orderId'];
+	const rollno = req.auth?.rollno;
+	const user = await db.User.findOne({ rollno });
+	const order = await db.Order.findById(orderId)
+		.populate<{ orderedBy: db.IUser }>('orderedBy')
+		.populate<{ deliveredBy: db.IUser }>('deliveredBy');
+	if (user!.rollno != order!.deliveredBy.rollno) {
+		res.status(400).json({
+			error: 'You are not the owner of this order',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	if (order!.status != db.OrderStatus.CONFIRMED) {
+		res.status(400).json({
+			error: 'Order is not confirmed',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	order!.status = db.OrderStatus.DELIVERED;
+	await order!.save();
+	res.json(order);
+});
+
+prouter.post('/order/:orderId/payment/received', async (req: Request, res: Response) => {
+	const orderId = req.params['orderId'];
+	const rollno = req.auth?.rollno;
+	const user = await db.User.findOne({ rollno });
+	const order = await db.Order.findById(orderId)
+		.populate<{ orderedBy: db.IUser }>('orderedBy')
+		.populate<{ deliveredBy: db.IUser }>('deliveredBy');
+	if (user!.rollno != order!.deliveredBy.rollno) {
+		res.status(400).json({
+			error: 'You are not the owner of this order',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	if (order!.status != db.OrderStatus.PAID) {
+		res.status(400).json({
+			error: 'Order is not paid',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	order!.status = db.OrderStatus.DONE;
+	await order!.save();
+	await db.User.findOneAndUpdate(
+		{ rollno: order!.orderedBy.rollno },
+		{ $set: { currentOrder: null } },
+	);
+	await db.User.findOneAndUpdate(
+		{ rollno: order!.deliveredBy.rollno },
+		{ $set: { currentDelivery: null } },
+	);
+	res.json(order);
+});
+
+prouter.post('/order/:orderId/payment/sent', async (req: Request, res: Response) => {
+	const orderId = req.params['orderId'];
+	const rollno = req.auth?.rollno;
+	const user = await db.User.findOne({ rollno });
+	const order = await db.Order.findById(orderId)
+		.populate<{ orderedBy: db.IUser }>('orderedBy')
+		.populate<{ deliveredBy: db.IUser }>('deliveredBy');
+	if (user!.rollno != order!.orderedBy.rollno) {
+		res.status(400).json({
+			error: 'You are not the owner of this order',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	if (order!.status != db.OrderStatus.DELIVERED) {
+		res.status(400).json({
+			error: 'Order is not delivered',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	order!.status = db.OrderStatus.PAID;
+	await order!.save();
+	res.json(order);
 });
 
 //import { adminrouter } from './admin';
