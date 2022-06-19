@@ -32,7 +32,7 @@ prouter.get('/orders', async (req: Request, res: Response) => {
 	res.json(orders);
 });
 
-prouter.post('/oder/:orderId/accept', async (req: Request, res: Response) => {
+prouter.post('/order/:orderId/accept', async (req: Request, res: Response) => {
 	const orderId = req.params['orderId'];
 	const rollno = req.auth?.rollno;
 	const user = await db.User.findOne({ rollno });
@@ -107,7 +107,7 @@ prouter.post('/order/:orderId/reject', async (req: Request, res: Response) => {
 prouter.post('/order', async (req: Request, res: Response) => {
 	const Items: db.IInventoryItem[] = req.body['items'];
 	const rollno = req.auth?.rollno;
-	const user = db.User.findOne({ rollno: rollno });
+	const user = await db.User.findOne({ rollno: rollno });
 	const store = await db.Store.findById(Items[0].store);
 	let price = 0;
 	const dbItems = [];
@@ -137,8 +137,9 @@ prouter.post('/order', async (req: Request, res: Response) => {
 		}
 		price += dbItem.price * item.quantity;
 	}
+
 	const order = new db.Order({
-		orderdBy: user,
+		orderdBy: user!._id,
 		items: dbItems,
 		total: price,
 		quantities: quantities,

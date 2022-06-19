@@ -118,11 +118,11 @@ app.get('/token', async (req: Request, res: Response) => {
 		},
 	);
 	res.json({
-		token: token,
 		user: {
 			name: user.name,
 			rollno: user.rollno,
 			email: user.email,
+			token: token,
 		},
 	});
 	await uuid_mapping.delete();
