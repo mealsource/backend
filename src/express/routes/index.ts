@@ -1,4 +1,4 @@
-// eslint-disable @typescript-eslint/no-non-null-assertion
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import prouter, { Request } from '../auth';
 import { Response } from 'express';
 import * as db from '../../db';
@@ -30,6 +30,78 @@ prouter.get('/orders', async (req: Request, res: Response) => {
 		.populate('items')
 		.populate('orderdBy');
 	res.json(orders);
+});
+
+prouter.post('/oder/:orderId/accept', async (req: Request, res: Response) => {
+	const orderId = req.params['orderId'];
+	const rollno = req.auth?.rollno;
+	const user = await db.User.findOne({ rollno });
+	const order = await db.Order.findById(orderId);
+	if (!order) {
+		res.status(404).json({
+			error: 'Order not found',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	if (order.status !== db.OrderStatus.PENDING) {
+		res.status(400).json({
+			error: 'Order is not pending',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+	}
+	order.deliveredBy = user!._id;
+	order.status = db.OrderStatus.ACCEPTED;
+	await order.save();
+	sendOrder(order.toObject());
+	res.json(order);
+});
+
+prouter.post('/order/:orderId/confirm', async (req: Request, res: Response) => {
+	const orderId = req.params['orderId'];
+	const rollno = req.auth?.rollno;
+	const user = await db.User.findOne({ rollno });
+	const order = await db.Order.findById(orderId).populate<{ orderdBy: db.IUser }>('orderdBy');
+	if (user != order!.orderdBy) {
+		res.status(400).json({
+			error: 'You are not the owner of this order',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	if (order!.status !== db.OrderStatus.ACCEPTED) {
+		res.status(400).json({
+			error: 'Order is not accepted',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+	}
+	order!.status = db.OrderStatus.CONFIRMED;
+	await order!.save();
+	res.json(order);
+});
+
+prouter.post('/order/:orderId/reject', async (req: Request, res: Response) => {
+	const orderId = req.params['orderId'];
+	const rollno = req.auth?.rollno;
+	const user = await db.User.findOne({ rollno });
+	const order = await db.Order.findById(orderId).populate<{ orderdBy: db.IUser }>('orderdBy');
+	if (user != order!.orderdBy) {
+		res.status(400).json({
+			error: 'You are not the owner of this order',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	if (order!.status !== db.OrderStatus.ACCEPTED) {
+		res.status(400).json({
+			error: 'Order is not accepted',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+	}
+	order!.status = db.OrderStatus.PENDING;
+	order!.deliveredBy = undefined;
+	sendOrder(order!.toObject());
+	await order!.save();
 });
 
 prouter.post('/order', async (req: Request, res: Response) => {

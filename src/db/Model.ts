@@ -87,8 +87,8 @@ export interface IOrder {
 	orderdBy: mongoose.Types.ObjectId;
 	orderdAt: Date;
 	items: mongoose.Types.ObjectId[];
-	deliveredBy: mongoose.Types.ObjectId;
-	deliveredAt: Date;
+	deliveredBy?: mongoose.Types.ObjectId;
+	deliveredAt?: Date;
 	status: OrderStatus;
 	store: mongoose.Types.ObjectId;
 	total: number;
