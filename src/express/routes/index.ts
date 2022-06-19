@@ -188,12 +188,7 @@ prouter.post('/order', async (req: Request, res: Response) => {
 			});
 			return;
 		}
-		const dbItem = await db.InventoryItem.findOneAndUpdate(
-			{ _id: item._id, quantity: { $gte: item.quantity } },
-			{
-				$inc: { quantity: -item.quantity },
-			},
-		);
+		const dbItem = await db.InventoryItem.findOneAndUpdate({ _id: item._id }, {});
 		dbItems.push(dbItem);
 		quantities.push(item.quantity);
 		if (!dbItem?.quantity) {
@@ -205,6 +200,7 @@ prouter.post('/order', async (req: Request, res: Response) => {
 		}
 		price += dbItem.price * item.quantity;
 	}
+	price += (price * 5) / 100;
 
 	const order = new db.Order({
 		orderedBy: user!._id,
