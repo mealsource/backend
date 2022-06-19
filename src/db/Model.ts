@@ -108,7 +108,6 @@ const OrderSchema = new mongoose.Schema<IOrder>({
 		type: mongoose.Schema.Types.ObjectId,
 		required: true,
 		ref: 'User',
-		unique: true,
 	},
 	orderdAt: { type: Date, required: true, default: () => new Date() },
 	items: [

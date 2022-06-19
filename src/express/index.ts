@@ -14,3 +14,14 @@ import prouter from './auth';
 import './routes';
 
 app.use('/', prouter);
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+//app.use((err, req, res, next) => {
+//	if (err) {
+//		logger.error(err);
+//		res.status(500).send(err.message);
+//		return;
+//	}
+//	next();
+//});

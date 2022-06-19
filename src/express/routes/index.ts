@@ -25,7 +25,10 @@ prouter.get('/store/:storeId/inventory', async (req: Request, res: Response) => 
 });
 
 prouter.get('/orders', async (req: Request, res: Response) => {
-	const orders = await db.Order.find({ status: db.OrderStatus.PENDING })
+	const orders = await db.Order.find({
+		status: db.OrderStatus.PENDING,
+		rollno: { $ne: req.auth?.rollno },
+	})
 		.populate('items')
 		.populate('orderedBy')
 		.populate('store');
@@ -49,6 +52,7 @@ prouter.post('/order/:orderId/accept', async (req: Request, res: Response) => {
 			error: 'Order is not pending',
 			errorcode: Errors.ErrorCode.INVALID_ORDER,
 		});
+		return;
 	}
 	if (user?.currentDelivery) {
 		res.status(400).json({
@@ -148,16 +152,34 @@ prouter.get('/currentorder', async (req: Request, res: Response) => {
 		.populate<{ currentOrder: db.IOrder }>('currentOrder')
 		.populate<{ currentDelivery: db.IOrder }>('currentDelivery');
 	if (user!.currentOrder) {
-		res.json({ type: 'order', order: user!.currentOrder });
+		const order = await db.Order.findById(user!.currentOrder)
+			.populate('items')
+			.populate('store')
+			.populate('orderedBy')
+			.populate('deliveredBy');
+		res.json({ type: 'order', order: order });
 	} else if (user!.currentDelivery) {
-		res.json({ type: 'delivery', order: user!.currentDelivery });
+		const order = await db.Order.findById(user!.currentDelivery)
+			.populate('items')
+			.populate('store')
+			.populate('orderedBy')
+			.populate('deliveredBy');
+		res.json({ type: 'delivery', order: order });
 	} else {
 		res.json({ type: 'none' });
 	}
 });
 
 prouter.post('/order', async (req: Request, res: Response) => {
-	const Items: db.IInventoryItem[] = req.body['items'];
+	let Items: db.IInventoryItem[] = req.body['items'];
+	if (!req.body.destination) {
+		res.status(400).json({
+			error: 'Destination is required',
+			errorcode: Errors.ErrorCode.INVALID_ORDER,
+		});
+		return;
+	}
+	Items = [...new Set(Items)];
 	const rollno = req.auth?.rollno;
 	const user = await db.User.findOne({ rollno: rollno })
 		.populate<{ currentOrder: db.IOrder }>('currentOrder')
@@ -198,7 +220,7 @@ prouter.post('/order', async (req: Request, res: Response) => {
 			});
 			return;
 		}
-		price += dbItem.price * item.quantity;
+		price += dbItem.price;
 	}
 	price += (price * 5) / 100;
 
